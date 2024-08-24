@@ -1,0 +1,174 @@
+name: Functional tests
+
+on:
+  workflow_dispatch:
+    inputs:
+      sha:
+        description: GHAction GIT ref to test
+        required: true
+        type: string
+
+env:
+  TEST_REPO_PATH: test-repo
+  ACTION_REPO: yoanm/gha-versioning
+  COMMIT_STATUS_API_URL: "/repos/yoanm/gha-versioning/statuses/${{ inputs.sha }}"
+  COMMIT_STATUS_TARGET_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+  COMMIT_STATUS_CONTEXT: "gha-versioning/functional-tests"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: ${{ env.TEST_REPO_PATH }}
+    permissions:
+      contents: write # Required to push new tags !
+    steps:
+      - name: Create original commit status
+        if: ${{ always() }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.COMMIT_STATUS_MNGT }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          (
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              $COMMIT_STATUS_API_URL \
+               -f "state=pending" \
+               -f "target_url=${COMMIT_STATUS_TARGET_URL}" \
+               -f "context=${COMMIT_STATUS_CONTEXT}"
+          ) || exit 1
+
+      - name: Checkout test repo
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.TEST_REPO_PATH }}
+
+      - name: DEBUG
+        run: |
+          echo 'outputs='"'"'${{ toJson(github.event) }}'"'"
+
+      - name: Checkout GHAction repo
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.ACTION_REPO }}
+          ref: ${{ inputs.sha }}
+          path: action-repo
+
+      - name: Create original tag
+        id: create-original-tag
+        run: |
+          MAJOR=$((1 + SRANDOM % 100))
+          MINOR=$((1 + SRANDOM % 100))
+          PATCH=$((1 + SRANDOM % 100))
+          TAG="v${MAJOR}.${MINOR}.${PATCH}"
+          echo "Create tag $TAG"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com" # Required when -m is used !
+          git config --global user.name "github-actions[bot]" # Required when -m is used !
+          (git tag $TAG -m 'original tag message' && git push origin $TAG) || exit 1
+
+          echo "full-tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "major-tag=v${MAJOR}" >> "$GITHUB_OUTPUT"
+          echo "minor-tag=v${MAJOR}.${MINOR}" >> "$GITHUB_OUTPUT"
+
+      - name: Run GHAction
+        id: test-1
+        uses: ./action-repo
+        with:
+          tag: ${{ steps.create-original-tag.outputs.full-tag }}
+          working-directory: ${{ env.TEST_REPO_PATH }}
+
+      - name: Ensure expected tag created
+        env:
+          MINOR_TAG: ${{ steps.test-1.outputs.minor-tag }}
+          MAJOR_TAG: ${{ steps.test-1.outputs.major-tag }}
+          ORIGINAL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
+          EXPECTED_MINOR_TAG: ${{ steps.create-original-tag.outputs.minor-tag }}
+          EXPECTED_MAJOR_TAG: ${{ steps.create-original-tag.outputs.major-tag }}
+        run: |
+          if ! [[ "$MINOR_TAG" = "$EXPECTED_MINOR_TAG" ]]; then
+            echo "::error::Invalid minor tag format (expected $EXPECTED_MINOR_TAG, got $MINOR_TAG) !"
+            exit 1
+          fi;
+          if ! [[ "$MAJOR_TAG" = "$EXPECTED_MAJOR_TAG" ]]; then
+            echo "::error::Invalid major tag format (expected $EXPECTED_MAJOR_TAG, got $MAJOR_TAG) !"
+            exit 1
+          fi;
+
+          if [[ "`git ls-remote --tags . "refs/tags/$EXPECTED_MINOR_TAG" | wc -l`" -eq 0 ]]; then
+            echo "::error::Tag $EXPECTED_MINOR_TAG doesn't exist on remote repository !"
+            exit 1
+          fi;
+
+          if [[ "`git ls-remote --tags . "refs/tags/$EXPECTED_MAJOR_TAG" | wc -l`" -eq 0 ]]; then
+            echo "::error::Tag $EXPECTED_MAJOR_TAG doesn't exist on remote repository !"
+            exit 1
+          fi;
+
+          # Ensure original tag message hasn't be updated
+          if [[ "`git tag -l --format='%(contents)' $ORIGINAL_TAG | grep "original tag message" | wc -l`" -eq 0 ]]; then
+            echo "::error::Tag $ORIGINAL_TAG doesn't contain the original message !"
+            exit 1
+          fi;
+
+      - name: Run GHAction with an invalid tag format
+        id: test-2
+        uses: ./action-repo
+        continue-on-error: true
+        with:
+          tag: v1.2.3-beta
+          working-directory: ${{ env.TEST_REPO_PATH }}
+
+      - name: Run GHAction with a non existing tag
+        id: test-3
+        uses: ./action-repo
+        continue-on-error: true
+        with:
+          tag: v0.0.0
+          working-directory: ${{ env.TEST_REPO_PATH }}
+
+      - name: Ensure failure on previous runs
+        env:
+          RESULT_1: ${{ steps.test-2.outcome }}
+          RESULT_2: ${{ steps.test-3.outcome }}
+        run: |
+          if ! [[ "$RESULT_1" = 'failure' ]]; then
+            echo "::error::Running the action with an invalid tag format must produce a failure !"
+            exit 1
+          fi;
+          if ! [[ "$RESULT_2" = 'failure' ]]; then
+            echo "::error::Running the action with a non existing tag must produce a failure !"
+            exit 1
+          fi;
+
+      - name: Clean tags
+        if: ${{ always() }}
+        env:
+          FULL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
+          MINOR_TAG: ${{ steps.create-original-tag.outputs.minor-tag }}
+          MAJOR_TAG: ${{ steps.create-original-tag.outputs.major-tag }}
+        run: |
+          git push --delete origin $FULL_TAG || echo "::warning::Tag $FULL_TAG doesn't exist on remote repository !"
+          git push --delete origin $MINOR_TAG || echo "::warning::Tag $MINOR_TAG doesn't exist on remote repository !"
+          git push --delete origin $MAJOR_TAG || echo "::warning::Tag $MAJOR_TAG doesn't exist on remote repository !"
+
+      - name: Update original commit status
+        if: ${{ always() }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.COMMIT_STATUS_MNGT }}
+          RESULT: ${{ job.status }}
+        working-directory: ${{ github.workspace }}
+        run: |
+          (
+            gh api \
+              --method POST \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              $COMMIT_STATUS_API_URL \
+               -f "state=${RESULT}" \
+               -f "target_url=${COMMIT_STATUS_TARGET_URL}" \
+               -f "context=${COMMIT_STATUS_CONTEXT}"
+          ) || exit 1
