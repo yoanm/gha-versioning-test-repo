@@ -47,10 +47,6 @@ jobs:
         with:
           path: ${{ env.TEST_REPO_PATH }}
 
-      - name: DEBUG
-        run: |
-          echo 'outputs='"'"'${{ toJson(github.event) }}'"'"
-
       - name: Checkout GHAction repo
         uses: actions/checkout@v4
         with:
