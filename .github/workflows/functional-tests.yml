@@ -209,14 +209,14 @@ jobs:
           working-directory: ${{ env.TEST_REPO_PATH }}
 
       - name: Validate major release is the latest
-          env:
-            MAJOR_TAG: ${{ steps.test-1.outputs.major-tag }}
-          run: |
-            LATEST_RELEASE_TAG="`gh repo view --json latestRelease -q .latestRelease.tagName || "_NONE_"`"
-            if ! [[ "${LATEST_RELEASE_TAG}" = "${MAJOR_TAG}" ]]; then
-              echo "::error::Latest release is expected to be for tag ${MAJOR_TAG} (got ${LATEST_RELEASE_TAG})!"
-              exit 1
-            fi
+        env:
+          MAJOR_TAG: ${{ steps.test-1.outputs.major-tag }}
+        run: |
+          LATEST_RELEASE_TAG="`gh repo view --json latestRelease -q .latestRelease.tagName || "_NONE_"`"
+          if ! [[ "${LATEST_RELEASE_TAG}" = "${MAJOR_TAG}" ]]; then
+            echo "::error::Latest release is expected to be for tag ${MAJOR_TAG} (got ${LATEST_RELEASE_TAG})!"
+            exit 1
+          fi
 
       - name: Clean releases & tags
         if: ${{ always() }}
