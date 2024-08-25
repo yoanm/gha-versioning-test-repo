@@ -245,7 +245,7 @@ jobs:
         if: ${{ always() }}
         env:
           GITHUB_TOKEN: ${{ secrets.COMMIT_STATUS_MNGT }}
-          RESULT: ${{ job.status }}
+          RESULT: ${{ job.status == 'cancelled' && 'failure' || job.status }}
         working-directory: ${{ github.workspace }}
         run: |
           (
