@@ -98,18 +98,18 @@ jobs:
             exit 1
           fi;
 
-          if [[ "`git ls-remote --tags . "refs/tags/$EXPECTED_MINOR_TAG" | wc -l`" -eq 0 ]]; then
+          if [[ "`git ls-remote --tags . "refs/tags/$EXPECTED_MINOR_TAG" | wc -l | tr -d '[:space:]'`" -eq 0 ]]; then
             echo "::error::Tag $EXPECTED_MINOR_TAG doesn't exist on remote repository !"
             exit 1
           fi;
 
-          if [[ "`git ls-remote --tags . "refs/tags/$EXPECTED_MAJOR_TAG" | wc -l`" -eq 0 ]]; then
+          if [[ "`git ls-remote --tags . "refs/tags/$EXPECTED_MAJOR_TAG" | wc -l | tr -d '[:space:]'`" -eq 0 ]]; then
             echo "::error::Tag $EXPECTED_MAJOR_TAG doesn't exist on remote repository !"
             exit 1
           fi;
 
           # Ensure original tag message hasn't be updated
-          if [[ "`git tag -l --format='%(contents)' $ORIGINAL_TAG | grep "original tag message" | wc -l`" -eq 0 ]]; then
+          if [[ "`git tag -l --format='%(contents)' $ORIGINAL_TAG | grep "original tag message" | wc -l | tr -d '[:space:]'`" -eq 0 ]]; then
             echo "::error::Tag $ORIGINAL_TAG doesn't contain the original message !"
             exit 1
           fi;
@@ -198,14 +198,16 @@ jobs:
             exit 1
           fi
 
-      - name: Set original release as latest
+      - name: Set original release as latest & remove minor release
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ORIGINAL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
+          MINOR_TAG: ${{ steps.create-original-tag.outputs.minor-tag }}
         run: |
           gh release edit ${ORIGINAL_TAG} --latest || exit 1
+          gh release delete ${MINOR_TAG} --yes || exit 1
 
-      - name: Run GHAction with releases and original release as latest
+      - name: Run GHAction with releases, original release as latest and no minor release
         uses: ./action-repo
         with:
           tag: ${{ steps.create-original-tag.outputs.full-tag }}
@@ -243,7 +245,7 @@ jobs:
         if: ${{ always() }}
         env:
           GITHUB_TOKEN: ${{ secrets.COMMIT_STATUS_MNGT }}
-          RESULT: ${{ job.status }}
+          RESULT: ${{ job.status == 'cancelled' && 'failure' || job.status }}
         working-directory: ${{ github.workspace }}
         run: |
           (
