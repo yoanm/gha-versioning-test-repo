@@ -160,11 +160,6 @@ jobs:
           # Create minor at the end so it will be the latest (release for original tag will be updated to latest later)
           create "${MINOR_TAG}" "${ORIGINAL_TAG}" "Note for ${MINOR_TAG} (${ORIGINAL_TAG})" || exit 1
 
-          #DEBUG - TO REMOVE
-          gh release view ${ORIGINAL_TAG} --json name,body
-          gh release view ${MAJOR_TAG} --json name,body
-          gh release view ${MINOR_TAG} --json name,body
-
       - name: Run GHAction with releases
         uses: ./action-repo
         with:
@@ -192,11 +187,6 @@ jobs:
               exit 1
             fi
           }
-
-          #DEBUG - TO REMOVE
-          gh release view ${ORIGINAL_TAG} --json name,body
-          gh release view ${MAJOR_TAG} --json name,body
-          gh release view ${MINOR_TAG} --json name,body
 
           validate "${MINOR_TAG}" "${ORIGINAL_TAG}" "Note for ${MINOR_TAG} (${ORIGINAL_TAG})" || exit 1
           validate "${MAJOR_TAG}" "${ORIGINAL_TAG}" "Note for ${MAJOR_TAG} (${ORIGINAL_TAG})" || exit 1
