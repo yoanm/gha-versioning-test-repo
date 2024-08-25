@@ -7,6 +7,10 @@ on:
         description: GHAction GIT ref to test
         required: true
         type: string
+      test-id:
+        description: Test ID used to cancel previous run (PR ID or SHA usually)
+        required: true
+        type: string
 
 env:
   TEST_REPO_PATH: test-repo
@@ -15,31 +19,31 @@ env:
   COMMIT_STATUS_TARGET_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
   COMMIT_STATUS_CONTEXT: "gha-versioning/functional-tests"
 
+concurrency:
+  group: "${{ github.workflow }}-${{ inputs.test-id }}"
+  cancel-in-progress: true
+
 jobs:
   test:
+    name: Test tags & releases
     runs-on: ubuntu-latest
     defaults:
       run:
         shell: bash
         working-directory: ${{ env.TEST_REPO_PATH }}
     permissions:
-      contents: write # Required to push new tags !
+      contents: write # Required to manage tags and release !
     steps:
       - name: Create original commit status
-        if: ${{ always() }}
+        if: ${{ always() }} # To keep -> Ensure status will be created even if workflow is cancelled at the beginning !
         env:
           GITHUB_TOKEN: ${{ secrets.COMMIT_STATUS_MNGT }}
         working-directory: ${{ github.workspace }}
         run: |
           (
-            gh api \
-              --method POST \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              $COMMIT_STATUS_API_URL \
-               -f "state=pending" \
-               -f "target_url=${COMMIT_STATUS_TARGET_URL}" \
-               -f "context=${COMMIT_STATUS_CONTEXT}"
+            gh api --method POST \
+              -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" $COMMIT_STATUS_API_URL \
+              -f "state=pending" -f "target_url=${COMMIT_STATUS_TARGET_URL}" -f "context=${COMMIT_STATUS_CONTEXT}"
           ) || exit 1
 
       - name: Checkout test repo
@@ -140,16 +144,94 @@ jobs:
             exit 1
           fi;
 
-      - name: Clean tags
+      - name: Create GH releases
+        env:
+          MINOR_TAG: ${{ steps.test-1.outputs.minor-tag }}
+          MAJOR_TAG: ${{ steps.test-1.outputs.major-tag }}
+          ORIGINAL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
+        run: |
+          function create() {
+            gh release create ${1} --title "${2}" --notes "${3}" --verify-tag || return 1
+            return 0
+          }
+          create "${ORIGINAL_TAG}" "${ORIGINAL_TAG}" "Note for ${ORIGINAL_TAG}" || exit 1
+          create "${MAJOR_TAG}" "${ORIGINAL_TAG}" "Note for ${MAJOR_TAG} (${ORIGINAL_TAG})" || exit 1
+          # Create minor at the end so it will be the latest (release for original tag will be updated to latest later)
+          create "${MINOR_TAG}" "${ORIGINAL_TAG}" "Note for ${MINOR_TAG} (${ORIGINAL_TAG})" || exit 1
+
+      - name: Run GHAction with releases
+        uses: ./action-repo
+        with:
+          tag: ${{ steps.create-original-tag.outputs.full-tag }}
+          update-inner-releases: true
+          working-directory: ${{ env.TEST_REPO_PATH }}
+
+      - name: Ensure expected releases updated
+        env:
+          MINOR_TAG: ${{ steps.test-1.outputs.minor-tag }}
+          MAJOR_TAG: ${{ steps.test-1.outputs.major-tag }}
+          ORIGINAL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
+        run: |
+          function validate() {
+            gh release view ${1} --json name,body > RELEASE_INFO
+            NAME="`cat RELEASE_INFO | jq .name`"
+            BODY="`cat RELEASE_INFO | jq .body`"
+            if ! [[ "${NAME}" = "${2}" ]]; then
+              echo "::error::Release name is invalid (expected \"${2}\", got \"${NAME}\")!"
+              exit 1
+            fi
+            if ! [[ "${BODY}" = "${3}" ]]; then
+              echo "::error::Release body is invalid (expected \"${3}\", got \"${BODY}\")!"
+              exit 1
+            fi
+          }
+          validate "${MINOR_TAG}" "${ORIGINAL_TAG}" "Note for ${MINOR_TAG} (${ORIGINAL_TAG})" || exit 1
+          validate "${MAJOR_TAG}" "${ORIGINAL_TAG}" "Note for ${MAJOR_TAG} (${ORIGINAL_TAG})" || exit 1
+          validate "${ORIGINAL_TAG}" "${ORIGINAL_TAG}" "Note for ${ORIGINAL_TAG}" || exit 1
+          # Check on latest release
+          LATEST_RELEASE_TAG="`gh repo view --json latestRelease -q .latestRelease.tagName || "_NONE_"`"
+          if [[ "${LATEST_RELEASE_TAG}" = "${MAJOR_TAG}" ]]; then
+            echo "::error::Latest release is not expected to be for tag ${MAJOR_TAG} !"
+            exit 1
+          fi
+
+      - name: Set original release as latest
+        env:
+          ORIGINAL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
+        run: |
+          gh release edit ${ORIGINAL_TAG} --latest || exit 1
+
+      - name: Run GHAction with releases and original release as latest
+        uses: ./action-repo
+        with:
+          tag: ${{ steps.create-original-tag.outputs.full-tag }}
+          update-inner-releases: true
+          working-directory: ${{ env.TEST_REPO_PATH }}
+
+      - name: Validate major release is the latest
+          env:
+            MAJOR_TAG: ${{ steps.test-1.outputs.major-tag }}
+          run: |
+            LATEST_RELEASE_TAG="`gh repo view --json latestRelease -q .latestRelease.tagName || "_NONE_"`"
+            if ! [[ "${LATEST_RELEASE_TAG}" = "${MAJOR_TAG}" ]]; then
+              echo "::error::Latest release is expected to be for tag ${MAJOR_TAG} (got ${LATEST_RELEASE_TAG})!"
+              exit 1
+            fi
+
+      - name: Clean releases & tags
         if: ${{ always() }}
         env:
           FULL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
           MINOR_TAG: ${{ steps.create-original-tag.outputs.minor-tag }}
           MAJOR_TAG: ${{ steps.create-original-tag.outputs.major-tag }}
         run: |
-          git push --delete origin $FULL_TAG || echo "::warning::Tag $FULL_TAG doesn't exist on remote repository !"
-          git push --delete origin $MINOR_TAG || echo "::warning::Tag $MINOR_TAG doesn't exist on remote repository !"
-          git push --delete origin $MAJOR_TAG || echo "::warning::Tag $MAJOR_TAG doesn't exist on remote repository !"
+          gh release delete $FULL_TAG --yes || echo "::warning::Error while removing $FULL_TAG release !"
+          gh release delete $MINOR_TAG --yes || echo "::warning::Error while removing $MINOR_TAG release !"
+          gh release delete $MAJOR_TAG --yes || echo "::warning::Error while removing $MAJOR_TAG release !"
+
+          git push --delete origin $FULL_TAG || echo "::warning::Error while removing $FULL_TAG tag !"
+          git push --delete origin $MINOR_TAG || echo "::warning::Error while removing $MINOR_TAG tag !"
+          git push --delete origin $MAJOR_TAG || echo "::warning::Error while removing $MAJOR_TAG tag !"
 
       - name: Update original commit status
         if: ${{ always() }}
@@ -159,12 +241,7 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: |
           (
-            gh api \
-              --method POST \
-              -H "Accept: application/vnd.github+json" \
-              -H "X-GitHub-Api-Version: 2022-11-28" \
-              $COMMIT_STATUS_API_URL \
-               -f "state=${RESULT}" \
-               -f "target_url=${COMMIT_STATUS_TARGET_URL}" \
-               -f "context=${COMMIT_STATUS_CONTEXT}"
+            gh api --method POST \
+              -H "Accept: application/vnd.github+json" -H "X-GitHub-Api-Version: 2022-11-28" $COMMIT_STATUS_API_URL \
+              -f "state=${RESULT}" -f "target_url=${COMMIT_STATUS_TARGET_URL}" -f "context=${COMMIT_STATUS_CONTEXT}"
           ) || exit 1
