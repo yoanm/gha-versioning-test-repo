@@ -202,9 +202,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
           ORIGINAL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
+          MINOR_TAG: ${{ steps.create-original-tag.outputs.minor-tag }}
         run: |
           gh release edit ${ORIGINAL_TAG} --latest || exit 1
-          gh release delete $MINOR_TAG --yes || exit 1
+          gh release delete ${MINOR_TAG} --yes || exit 1
 
       - name: Run GHAction with releases, original release as latest and no minor release
         uses: ./action-repo
