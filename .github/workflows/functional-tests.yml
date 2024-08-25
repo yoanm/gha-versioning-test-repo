@@ -224,6 +224,7 @@ jobs:
 
       - name: Validate major release is the latest
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           MAJOR_TAG: ${{ steps.test-1.outputs.major-tag }}
         run: |
           LATEST_RELEASE_TAG="`gh repo view --json latestRelease -q .latestRelease.tagName || "_NONE_"`"
