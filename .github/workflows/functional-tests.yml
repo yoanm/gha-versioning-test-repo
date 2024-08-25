@@ -146,6 +146,7 @@ jobs:
 
       - name: Create GH releases
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           MINOR_TAG: ${{ steps.test-1.outputs.minor-tag }}
           MAJOR_TAG: ${{ steps.test-1.outputs.major-tag }}
           ORIGINAL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
@@ -168,6 +169,7 @@ jobs:
 
       - name: Ensure expected releases updated
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           MINOR_TAG: ${{ steps.test-1.outputs.minor-tag }}
           MAJOR_TAG: ${{ steps.test-1.outputs.major-tag }}
           ORIGINAL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
@@ -197,6 +199,7 @@ jobs:
 
       - name: Set original release as latest
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           ORIGINAL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
         run: |
           gh release edit ${ORIGINAL_TAG} --latest || exit 1
@@ -221,6 +224,7 @@ jobs:
       - name: Clean releases & tags
         if: ${{ always() }}
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           FULL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
           MINOR_TAG: ${{ steps.create-original-tag.outputs.minor-tag }}
           MAJOR_TAG: ${{ steps.create-original-tag.outputs.major-tag }}
