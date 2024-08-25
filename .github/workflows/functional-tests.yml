@@ -181,8 +181,8 @@ jobs:
         run: |
           function validate() {
             gh release view ${1} --json name,body > RELEASE_INFO
-            NAME="`cat RELEASE_INFO | jq .name`"
-            BODY="`cat RELEASE_INFO | jq .body`"
+            NAME="`cat RELEASE_INFO | jq -r .name`"
+            BODY="`cat RELEASE_INFO | jq -r .body`"
             if ! [[ "${NAME}" = "${2}" ]]; then
               echo "::error::Release name is invalid (expected \"${2}\", got \"${NAME}\")!"
               exit 1
