@@ -160,6 +160,11 @@ jobs:
           # Create minor at the end so it will be the latest (release for original tag will be updated to latest later)
           create "${MINOR_TAG}" "${ORIGINAL_TAG}" "Note for ${MINOR_TAG} (${ORIGINAL_TAG})" || exit 1
 
+          #DEBUG - TO REMOVE
+          gh release view ${ORIGINAL_TAG} --json name,body
+          gh release view ${MAJOR_TAG} --json name,body
+          gh release view ${MINOR_TAG} --json name,body
+
       - name: Run GHAction with releases
         uses: ./action-repo
         with:
@@ -187,6 +192,12 @@ jobs:
               exit 1
             fi
           }
+
+          #DEBUG - TO REMOVE
+          gh release view ${ORIGINAL_TAG} --json name,body
+          gh release view ${MAJOR_TAG} --json name,body
+          gh release view ${MINOR_TAG} --json name,body
+
           validate "${MINOR_TAG}" "${ORIGINAL_TAG}" "Note for ${MINOR_TAG} (${ORIGINAL_TAG})" || exit 1
           validate "${MAJOR_TAG}" "${ORIGINAL_TAG}" "Note for ${MAJOR_TAG} (${ORIGINAL_TAG})" || exit 1
           validate "${ORIGINAL_TAG}" "${ORIGINAL_TAG}" "Note for ${ORIGINAL_TAG}" || exit 1
@@ -225,15 +236,15 @@ jobs:
         if: ${{ always() }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          FULL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
+          ORIGINAL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
           MINOR_TAG: ${{ steps.create-original-tag.outputs.minor-tag }}
           MAJOR_TAG: ${{ steps.create-original-tag.outputs.major-tag }}
         run: |
-          gh release delete $FULL_TAG --yes || echo "::warning::Error while removing $FULL_TAG release !"
+          gh release delete $ORIGINAL_TAG --yes || echo "::warning::Error while removing $ORIGINAL_TAG release !"
           gh release delete $MINOR_TAG --yes || echo "::warning::Error while removing $MINOR_TAG release !"
           gh release delete $MAJOR_TAG --yes || echo "::warning::Error while removing $MAJOR_TAG release !"
 
-          git push --delete origin $FULL_TAG || echo "::warning::Error while removing $FULL_TAG tag !"
+          git push --delete origin $ORIGINAL_TAG || echo "::warning::Error while removing $ORIGINAL_TAG tag !"
           git push --delete origin $MINOR_TAG || echo "::warning::Error while removing $MINOR_TAG tag !"
           git push --delete origin $MAJOR_TAG || echo "::warning::Error while removing $MAJOR_TAG tag !"
 
