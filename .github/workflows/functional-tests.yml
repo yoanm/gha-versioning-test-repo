@@ -98,18 +98,18 @@ jobs:
             exit 1
           fi;
 
-          if [[ "`git ls-remote --tags . "refs/tags/$EXPECTED_MINOR_TAG" | wc -l`" -eq 0 ]]; then
+          if [[ "`git ls-remote --tags . "refs/tags/$EXPECTED_MINOR_TAG" | wc -l | tr -d '[:space:]'`" -eq 0 ]]; then
             echo "::error::Tag $EXPECTED_MINOR_TAG doesn't exist on remote repository !"
             exit 1
           fi;
 
-          if [[ "`git ls-remote --tags . "refs/tags/$EXPECTED_MAJOR_TAG" | wc -l`" -eq 0 ]]; then
+          if [[ "`git ls-remote --tags . "refs/tags/$EXPECTED_MAJOR_TAG" | wc -l | tr -d '[:space:]'`" -eq 0 ]]; then
             echo "::error::Tag $EXPECTED_MAJOR_TAG doesn't exist on remote repository !"
             exit 1
           fi;
 
           # Ensure original tag message hasn't be updated
-          if [[ "`git tag -l --format='%(contents)' $ORIGINAL_TAG | grep "original tag message" | wc -l`" -eq 0 ]]; then
+          if [[ "`git tag -l --format='%(contents)' $ORIGINAL_TAG | grep "original tag message" | wc -l | tr -d '[:space:]'`" -eq 0 ]]; then
             echo "::error::Tag $ORIGINAL_TAG doesn't contain the original message !"
             exit 1
           fi;
