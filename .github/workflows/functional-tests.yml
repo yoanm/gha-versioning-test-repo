@@ -152,19 +152,20 @@ jobs:
           ORIGINAL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
         run: |
           function create() {
-            gh release create ${1} --title "${2}" --notes "${3}" --verify-tag || return 1
+            gh release create ${1} --title "${2}" --notes "${3}" --verify-tag --latest || return 1
             return 0
           }
-          create "${ORIGINAL_TAG}" "${ORIGINAL_TAG}" "Note for ${ORIGINAL_TAG}" || exit 1
+
           create "${MAJOR_TAG}" "${ORIGINAL_TAG}" "Note for ${MAJOR_TAG} (${ORIGINAL_TAG})" || exit 1
-          # Create minor at the end so it will be the latest (release for original tag will be updated to latest later)
           create "${MINOR_TAG}" "${ORIGINAL_TAG}" "Note for ${MINOR_TAG} (${ORIGINAL_TAG})" || exit 1
+          create "${ORIGINAL_TAG}" "${ORIGINAL_TAG}" "Note for ${ORIGINAL_TAG}" || exit 1
 
       - name: Run GHAction with releases
         uses: ./action-repo
         with:
           tag: ${{ steps.create-original-tag.outputs.full-tag }}
           update-inner-releases: true
+          inner-releases-as-latest: false
           working-directory: ${{ env.TEST_REPO_PATH }}
 
       - name: Ensure expected releases updated
@@ -198,13 +199,11 @@ jobs:
             exit 1
           fi
 
-      - name: Set original release as latest & remove minor release
+      - name: Remove minor release
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          ORIGINAL_TAG: ${{ steps.create-original-tag.outputs.full-tag }}
           MINOR_TAG: ${{ steps.create-original-tag.outputs.minor-tag }}
         run: |
-          gh release edit ${ORIGINAL_TAG} --latest || exit 1
           gh release delete ${MINOR_TAG} --yes || exit 1
 
       - name: Run GHAction with releases, original release as latest and no minor release
